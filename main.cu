@@ -154,35 +154,18 @@ __global__ void rasterizeTriangle(unsigned char* outBuffer)
     float wA, wB, wC;
     barycentric(px, py, ax, ay, bx, by, cx, cy, wA, wB, wC);
 
-    // If inside triangle
     if (wA >= 0.0f && wB >= 0.0f && wC >= 0.0f) {
-        // Interpolate attributes
-        // color, normal, texCoord 
-        float4 color   = wA * v0.color   + wB * v1.color   + wC * v2.color;
-        float3 normal  = wA * v0.normal  + wB * v1.normal  + wC * v2.normal;
-        float2 texCoord= wA * v0.texCoord+ wB * v1.texCoord+ wC * v2.texCoord;
+        // Interpolate the color ONLY (ignore texture)
+        float4 color = wA * v0.color 
+                     + wB * v1.color 
+                     + wC * v2.color;
 
-        // Sample the texture
-        float4 texColor = sampleTexture(d_textureInfo, texCoord.x, texCoord.y);
-
-        // Simple Lambert: lambert = max(dot(normal, lightDir), 0)
-        float3 n = normalize(normal);
-        float3 l = normalize(d_lightDirection);
-        float lambert = fmaxf(dot(n, l), 0.0f);
-
-        // Combine texture color and lambert. Add a small ambient, e.g. 0.1
-	float3 textColor3 = make_float3(texColor.x, texColor.y, texColor.z);
-        float3 finalRgb = lambert * textColor3 + make_float3(0.1f, 0.1f, 0.1f);
-
-        // Output alpha from texture
-        float alpha = texColor.w;
-
-        // Write to RGBA
+        // Write directly to the output, no lighting, no texture
         int idx = 4 * (y * WIDTH + x);
-        outBuffer[idx + 0] = static_cast<unsigned char>(fminf(fmaxf(finalRgb.x, 0.0f), 1.0f)*255.0f);
-        outBuffer[idx + 1] = static_cast<unsigned char>(fminf(fmaxf(finalRgb.y, 0.0f), 1.0f)*255.0f);
-        outBuffer[idx + 2] = static_cast<unsigned char>(fminf(fmaxf(finalRgb.z, 0.0f), 1.0f)*255.0f);
-        outBuffer[idx + 3] = static_cast<unsigned char>(fminf(fmaxf(alpha,      0.0f), 1.0f)*255.0f);
+        outBuffer[idx + 0] = static_cast<unsigned char>(fminf(fmaxf(color.x, 0.0f), 1.0f)*255.0f); 
+        outBuffer[idx + 1] = static_cast<unsigned char>(fminf(fmaxf(color.y, 0.0f), 1.0f)*255.0f);
+        outBuffer[idx + 2] = static_cast<unsigned char>(fminf(fmaxf(color.z, 0.0f), 1.0f)*255.0f);
+        outBuffer[idx + 3] = static_cast<unsigned char>(fminf(fmaxf(color.w, 0.0f), 1.0f)*255.0f);
     } 
     else {
         // Outside -> black
