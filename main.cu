@@ -131,6 +131,9 @@ __global__ void rasterizeTriangle(unsigned char* outBuffer)
     Vertex v1 = d_vertices[1];
     Vertex v2 = d_vertices[2];
 
+    // Light direction from constant memory
+    float3 lightDir = d_lightDirection;
+
     // Clip->screen transform
     auto toScreenX = [](float clipX) {
         return 0.5f * (clipX + 1.0f) * (WIDTH - 1);
@@ -155,17 +158,50 @@ __global__ void rasterizeTriangle(unsigned char* outBuffer)
     barycentric(px, py, ax, ay, bx, by, cx, cy, wA, wB, wC);
 
     if (wA >= 0.0f && wB >= 0.0f && wC >= 0.0f) {
-        // Interpolate the color ONLY (ignore texture)
-        float4 color = wA * v0.color 
-                     + wB * v1.color 
-                     + wC * v2.color;
 
-        // Write directly to the output, no lighting, no texture
+        // Interpolate the normal
+        float3 normal = wA * v0.normal 
+                     + wB * v1.normal 
+                     + wC * v2.normal;
+
+        // Normalize the normal
+        float3 n = normalize(normal);
+
+        // 2) Compute Lambert diffuse factor
+        float diff = dot(n, lightDir);
+        if (diff < 0.0f) diff = 0.0f;
+
+
+        // 3) Interpolate the texture coordinate, sample the texture
+        float2 uv = wA * v0.texCoord +
+                    wB * v1.texCoord +
+                    wC * v2.texCoord;
+        float4 texColor = sampleTexture(d_textureInfo, uv.x, uv.y);
+
+        // 4) Interpolate the vertex color
+        float4 vertColor = wA * v0.color +
+                           wB * v1.color +
+                           wC * v2.color;
+
+        // 5) Multiply: (Lambert) * (vertex color) * (texture color)
+        float4 finalColor = diff * vertColor * texColor;
+
+        // Force alpha to 1.0 or combine if you wish
+        finalColor.w = 1.0f;
+
+        // Clamp to [0,1]
+        finalColor.x = fminf(fmaxf(finalColor.x, 0.0f), 1.0f);
+        finalColor.y = fminf(fmaxf(finalColor.y, 0.0f), 1.0f);
+        finalColor.z = fminf(fmaxf(finalColor.z, 0.0f), 1.0f);
+        finalColor.w = fminf(fmaxf(finalColor.w, 0.0f), 1.0f);
+
+        // Write final color
         int idx = 4 * (y * WIDTH + x);
-        outBuffer[idx + 0] = static_cast<unsigned char>(fminf(fmaxf(color.x, 0.0f), 1.0f)*255.0f); 
-        outBuffer[idx + 1] = static_cast<unsigned char>(fminf(fmaxf(color.y, 0.0f), 1.0f)*255.0f);
-        outBuffer[idx + 2] = static_cast<unsigned char>(fminf(fmaxf(color.z, 0.0f), 1.0f)*255.0f);
-        outBuffer[idx + 3] = static_cast<unsigned char>(fminf(fmaxf(color.w, 0.0f), 1.0f)*255.0f);
+        outBuffer[idx + 0] = static_cast<unsigned char>(finalColor.x * 255.0f);
+        outBuffer[idx + 1] = static_cast<unsigned char>(finalColor.y * 255.0f);
+        outBuffer[idx + 2] = static_cast<unsigned char>(finalColor.z * 255.0f);
+        outBuffer[idx + 3] = static_cast<unsigned char>(finalColor.w * 255.0f);
+
     } 
     else {
         // Outside -> black
