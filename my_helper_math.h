@@ -58,3 +58,12 @@ inline float3 xyz(const float4 &v) {
     return make_float3(v.x, v.y, v.z);
 }
 
+__host__ __device__
+inline float4 operator*(const float4 &a, const float4 &b) {
+    // Component-wise multiply
+    return make_float4(a.x * b.x, 
+                       a.y * b.y, 
+                       a.z * b.z, 
+                       a.w * b.w);
+}
+
